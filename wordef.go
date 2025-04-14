@@ -1,0 +1,163 @@
+package main
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"net/url"
+	"os"
+	"path"
+	"path/filepath"
+)
+
+type WordInfo []struct {
+	Word      string `json:"word"`
+	Phonetic  string `json:"phonetic"`
+	Phonetics []struct {
+		Text  string `json:"text"`
+		Audio string `json:"audio,omitempty"`
+	} `json:"phonetics"`
+	Origin   string `json:"origin"`
+	Meanings []struct {
+		PartOfSpeech string `json:"partOfSpeech"`
+		Definitions  []struct {
+			Definition string `json:"definition"`
+			Example    string `json:"example"`
+			Synonyms   []any  `json:"synonyms"`
+			Antonyms   []any  `json:"antonyms"`
+		} `json:"definitions"`
+	} `json:"meanings"`
+}
+
+func getAppDir() (string, error) {
+	dir, err := os.UserConfigDir()
+
+	if err != nil {
+		return "", err
+	}
+
+	path := filepath.Join(dir, "wordef")
+
+	err = os.MkdirAll(path, os.ModePerm)
+
+	if err != nil {
+		return "", err
+	}
+
+	return path, nil
+}
+
+func saveToAppDir(word string, rawJson []byte, appDir string) error {
+	wordPath := path.Join(appDir, word + ".json")
+
+	_, err := os.Stat(wordPath)
+
+	if err == nil {
+		return errors.New("Word already saved to file")
+	}
+
+	return os.WriteFile(wordPath, rawJson, os.ModePerm)
+}
+
+func searchWordLocal(word, appDir string) (parsed WordInfo, err error) {
+	wordPath := path.Join(appDir, word + ".json")
+
+	_, err = os.Stat(wordPath)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rawJson, err := os.ReadFile(wordPath)
+
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal(rawJson, &parsed)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return parsed, nil
+}
+
+func searchWordApi(word string) (parsed WordInfo, rawJson []byte, err error) {
+	url := "https://api.dictionaryapi.dev/api/v2/entries/en/" + url.QueryEscape(word)
+
+	resp, err := http.Get(url)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	defer resp.Body.Close()
+
+	rawJson, err = io.ReadAll(resp.Body)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	err = json.Unmarshal(rawJson, &parsed)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return parsed, rawJson, nil
+}
+
+func main() {
+	appDir, err := getAppDir()
+
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	args := os.Args
+
+	if len(args) == 0 {
+		log.Fatalln("Must pass word as argument")
+	}
+
+	word := args[0]
+
+	var resp WordInfo
+
+	resp, err = searchWordLocal(word, appDir)
+
+	if err != nil {
+		var raw []byte
+
+		resp, raw, err = searchWordApi(word)
+
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		saveToAppDir(word, raw, appDir)
+	}
+
+	
+	wordInfo := resp[0]
+
+	if len(wordInfo.Meanings) == 0 {
+		fmt.Println("No definitions found for word", word)
+		return
+	}
+
+	fmt.Println("POS\tDefinition")
+	fmt.Println("------------------------------------------------")
+
+	for _, v := range wordInfo.Meanings {
+		pos := v.PartOfSpeech
+		definition := v.Definitions[0]
+
+		fmt.Printf("%s\t%s", pos, definition)
+	}
+}
