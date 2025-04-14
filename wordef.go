@@ -63,44 +63,16 @@ func saveToAppDir(word string, rawJson []byte, appDir string) error {
 	return os.WriteFile(wordPath, rawJson, os.ModePerm)
 }
 
-func searchWordLocal(word, appDir string) (parsed []WordInfo, err error) {
+func searchWordLocal(word, appDir string) (parsed []WordInfo, rawJson []byte, err error) {
 	wordPath := path.Join(appDir, word + ".json")
 
 	_, err = os.Stat(wordPath)
 
 	if err != nil {
-		return nil, err
-	}
-
-	rawJson, err := os.ReadFile(wordPath)
-
-	if err != nil {
-		return nil, err
-	}
-
-	err = json.Unmarshal(rawJson, &parsed)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return parsed, nil
-}
-
-func searchWordApi(word string) (parsed []WordInfo, rawJson []byte, err error) {
-	url := "https://api.dictionaryapi.dev/api/v2/entries/en/" + word
-
-	fmt.Println(url)
-
-	resp, err := http.Get(url)
-
-	if err != nil {
 		return nil, nil, err
 	}
 
-	defer resp.Body.Close()
-
-	rawJson, err = io.ReadAll(resp.Body)
+	rawJson, err = os.ReadFile(wordPath)
 
 	if err != nil {
 		return nil, nil, err
@@ -113,6 +85,43 @@ func searchWordApi(word string) (parsed []WordInfo, rawJson []byte, err error) {
 	}
 
 	return parsed, rawJson, nil
+}
+
+func searchWord(word, appDir string) (parsed []WordInfo, err error) {
+
+	local, rawJson, err := searchWordLocal(word, appDir)
+
+	if err == nil {
+		return local, nil
+	}
+
+	url := "https://api.dictionaryapi.dev/api/v2/entries/en/" + word
+
+	fmt.Println(url)
+
+	resp, err := http.Get(url)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+
+	rawJson, err = io.ReadAll(resp.Body)
+
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal(rawJson, &parsed)
+
+	if err != nil {
+		return nil, err
+	}
+
+	saveToAppDir(word, rawJson, appDir)
+
+	return parsed, nil
 }
 
 func renderDefinitionsTable(wordInfo WordInfo) {
@@ -147,21 +156,8 @@ func main() {
 
 	var resp []WordInfo
 
-	resp, err = searchWordLocal(word, appDir)
+	resp, err = searchWord(word, appDir)
 
-	if err != nil {
-		var raw []byte
-
-		resp, raw, err = searchWordApi(word)
-
-		if err != nil {
-			log.Fatalln(err)
-		}
-
-		saveToAppDir(word, raw, appDir)
-	}
-
-	
 	wordInfo := resp[0]
 
 	if len(wordInfo.Meanings) == 0 {
