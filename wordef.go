@@ -7,13 +7,14 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
+
+	"github.com/olekukonko/tablewriter"
 )
 
-type WordInfo []struct {
+type WordInfo struct {
 	Word      string `json:"word"`
 	Phonetic  string `json:"phonetic"`
 	Phonetics []struct {
@@ -62,7 +63,7 @@ func saveToAppDir(word string, rawJson []byte, appDir string) error {
 	return os.WriteFile(wordPath, rawJson, os.ModePerm)
 }
 
-func searchWordLocal(word, appDir string) (parsed WordInfo, err error) {
+func searchWordLocal(word, appDir string) (parsed []WordInfo, err error) {
 	wordPath := path.Join(appDir, word + ".json")
 
 	_, err = os.Stat(wordPath)
@@ -86,8 +87,10 @@ func searchWordLocal(word, appDir string) (parsed WordInfo, err error) {
 	return parsed, nil
 }
 
-func searchWordApi(word string) (parsed WordInfo, rawJson []byte, err error) {
-	url := "https://api.dictionaryapi.dev/api/v2/entries/en/" + url.QueryEscape(word)
+func searchWordApi(word string) (parsed []WordInfo, rawJson []byte, err error) {
+	url := "https://api.dictionaryapi.dev/api/v2/entries/en/" + word
+
+	fmt.Println(url)
 
 	resp, err := http.Get(url)
 
@@ -112,6 +115,21 @@ func searchWordApi(word string) (parsed WordInfo, rawJson []byte, err error) {
 	return parsed, rawJson, nil
 }
 
+func renderDefinitionsTable(wordInfo WordInfo) {
+	table := tablewriter.NewWriter(os.Stdout)
+
+	table.SetHeader([]string { "POS", "Definition" })
+
+	for _, v := range wordInfo.Meanings {
+		pos := v.PartOfSpeech
+		definition := v.Definitions[0].Definition
+
+		table.Append([]string {pos, definition})
+	}
+
+	table.Render()
+}
+
 func main() {
 	appDir, err := getAppDir()
 
@@ -121,13 +139,13 @@ func main() {
 
 	args := os.Args
 
-	if len(args) == 0 {
+	if len(args) < 2 {
 		log.Fatalln("Must pass word as argument")
 	}
 
-	word := args[0]
+	word := args[1]
 
-	var resp WordInfo
+	var resp []WordInfo
 
 	resp, err = searchWordLocal(word, appDir)
 
@@ -151,13 +169,5 @@ func main() {
 		return
 	}
 
-	fmt.Println("POS\tDefinition")
-	fmt.Println("------------------------------------------------")
-
-	for _, v := range wordInfo.Meanings {
-		pos := v.PartOfSpeech
-		definition := v.Definitions[0]
-
-		fmt.Printf("%s\t%s", pos, definition)
-	}
+	renderDefinitionsTable(wordInfo)
 }
