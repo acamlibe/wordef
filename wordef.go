@@ -55,7 +55,7 @@ func getCacheDir() (string, error) {
 }
 
 func saveToCache(word string, rawJson []byte, cacheDir string) error {
-	wordPath := path.Join(cacheDir, word + ".json")
+	wordPath := path.Join(cacheDir, word+".json")
 
 	_, err := os.Stat(wordPath)
 
@@ -73,7 +73,7 @@ func saveToCache(word string, rawJson []byte, cacheDir string) error {
 }
 
 func fetchFromCache(word, cacheDir string) (rawJson []byte, err error) {
-	wordPath := path.Join(cacheDir, word + ".json")
+	wordPath := path.Join(cacheDir, word+".json")
 
 	_, err = os.Stat(wordPath)
 
@@ -145,7 +145,7 @@ func getCachedWords(cacheDir string) (words []string, err error) {
 		}
 
 		return nil
-	});
+	})
 
 	if err != nil {
 		return nil, fmt.Errorf("Failed to get cached words from cache directory: %w", err)
@@ -164,23 +164,23 @@ func capitalizeString(s string) string {
 }
 
 func renderDefinitionsTable(table *tablewriter.Table, wordInfo WordInfo) {
-	table.SetHeader([]string { "POS", "Definition" })
+	table.SetHeader([]string{"POS", "Definition"})
 
 	for _, v := range wordInfo.Meanings {
 		pos := v.PartOfSpeech
 		definition := v.Definitions[0].Definition
 
-		table.Append([]string {pos, definition})
+		table.Append([]string{pos, definition})
 	}
 
 	table.Render()
 }
 
 func renderCachedWordsTable(table *tablewriter.Table, cachedWords []string) {
-	table.SetHeader([] string { "Saved Words" })
+	table.SetHeader([]string{"Saved Words"})
 
 	for _, v := range cachedWords {
-		table.Append([]string {v})
+		table.Append([]string{v})
 	}
 
 	table.Render()
@@ -204,7 +204,7 @@ func handleSearchCommand(table *tablewriter.Table, word string, cacheDir string)
 	fmt.Println("Word:", wordInfo.Word)
 	fmt.Println("Phonetic Spelling:", wordInfo.Phonetic)
 	fmt.Println()
-	
+
 	renderDefinitionsTable(table, wordInfo)
 
 	return nil
