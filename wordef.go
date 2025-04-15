@@ -33,11 +33,11 @@ type WordInfo struct {
 	} `json:"meanings"`
 }
 
-func getAppDir() (string, error) {
+func getCacheDir() (string, error) {
 	dir, err := os.UserConfigDir()
 
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("Failed to get user config directory: %w", err)
 	}
 
 	path := filepath.Join(dir, "wordef")
@@ -45,14 +45,14 @@ func getAppDir() (string, error) {
 	err = os.MkdirAll(path, os.ModePerm)
 
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("Failed to create app directory: %w", err)
 	}
 
 	return path, nil
 }
 
-func saveToAppDir(word string, rawJson []byte, appDir string) error {
-	wordPath := path.Join(appDir, word + ".json")
+func saveToCache(word string, rawJson []byte, cacheDir string) error {
+	wordPath := path.Join(cacheDir, word + ".json")
 
 	_, err := os.Stat(wordPath)
 
@@ -60,44 +60,35 @@ func saveToAppDir(word string, rawJson []byte, appDir string) error {
 		return errors.New("Word already saved to file")
 	}
 
-	return os.WriteFile(wordPath, rawJson, os.ModePerm)
+	err = os.WriteFile(wordPath, rawJson, os.ModePerm)
+
+	if err != nil {
+		return fmt.Errorf("Failed to write cache file to app directory: %w", err)
+	}
+
+	return nil
 }
 
-func searchWordLocal(word, appDir string) (parsed []WordInfo, rawJson []byte, err error) {
-	wordPath := path.Join(appDir, word + ".json")
+func fetchFromCache(word, cacheDir string) (rawJson []byte, err error) {
+	wordPath := path.Join(cacheDir, word + ".json")
 
 	_, err = os.Stat(wordPath)
 
 	if err != nil {
-		return nil, nil, err
+		return nil, fmt.Errorf("Word not found in cache: %w", err)
 	}
 
 	rawJson, err = os.ReadFile(wordPath)
 
 	if err != nil {
-		return nil, nil, err
+		return nil, fmt.Errorf("failed to read cache file: %w", err)
 	}
 
-	err = json.Unmarshal(rawJson, &parsed)
-
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return parsed, rawJson, nil
+	return rawJson, nil
 }
 
-func searchWord(word, appDir string) (parsed []WordInfo, err error) {
-
-	local, rawJson, err := searchWordLocal(word, appDir)
-
-	if err == nil {
-		return local, nil
-	}
-
+func fetchFromApi(word string) (rawJson []byte, err error) {
 	url := "https://api.dictionaryapi.dev/api/v2/entries/en/" + word
-
-	fmt.Println(url)
 
 	resp, err := http.Get(url)
 
@@ -110,7 +101,18 @@ func searchWord(word, appDir string) (parsed []WordInfo, err error) {
 	rawJson, err = io.ReadAll(resp.Body)
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Failed to read response body: %w", err)
+	}
+
+	return rawJson, nil
+}
+
+func searchWord(word, cacheDir string) (parsed []WordInfo, err error) {
+
+	rawJson, err := fetchFromCache(word, cacheDir)
+
+	if err == nil {
+		rawJson, err = fetchFromApi(word)
 	}
 
 	err = json.Unmarshal(rawJson, &parsed)
@@ -119,14 +121,12 @@ func searchWord(word, appDir string) (parsed []WordInfo, err error) {
 		return nil, err
 	}
 
-	saveToAppDir(word, rawJson, appDir)
+	saveToCache(word, rawJson, cacheDir)
 
 	return parsed, nil
 }
 
-func renderDefinitionsTable(wordInfo WordInfo) {
-	table := tablewriter.NewWriter(os.Stdout)
-
+func renderDefinitionsTable(table *tablewriter.Table, wordInfo WordInfo) {
 	table.SetHeader([]string { "POS", "Definition" })
 
 	for _, v := range wordInfo.Meanings {
@@ -139,8 +139,31 @@ func renderDefinitionsTable(wordInfo WordInfo) {
 	table.Render()
 }
 
+func handleSearchCommand(table *tablewriter.Table, word string, cacheDir string) error {
+	var resp []WordInfo
+
+	resp, err := searchWord(word, cacheDir)
+
+	if err != nil {
+		return fmt.Errorf("Failed to search for word %s: %w", word, err)
+	}
+
+	wordInfo := resp[0]
+
+	if len(wordInfo.Meanings) == 0 {
+		return fmt.Errorf("Failed to search for word %s: %w", word, err)
+	}
+
+	renderDefinitionsTable(table, wordInfo)
+}
+
+func handleWelcomeCommand() {
+	fmt.Println("wordef")
+	fmt.Println("wordef is used to lookup the definition of a word. The output includes the phonetic spelling, the different meanings of the word given different parts-of-speech (Noun, Verb, Adjective)")
+}
+
 func main() {
-	appDir, err := getAppDir()
+	cacheDir, err := getCacheDir()
 
 	if err != nil {
 		log.Fatalln(err)
@@ -148,22 +171,12 @@ func main() {
 
 	args := os.Args
 
-	if len(args) < 2 {
-		log.Fatalln("Must pass word as argument")
+	table := tablewriter.NewWriter(os.Stdout)
+
+	if len(args) == 2 {
+		word := args[1]
+		handleSearchCommand(table, word, cacheDir)
+	} else {
+		handleWelcomeCommand()
 	}
-
-	word := args[1]
-
-	var resp []WordInfo
-
-	resp, err = searchWord(word, appDir)
-
-	wordInfo := resp[0]
-
-	if len(wordInfo.Meanings) == 0 {
-		fmt.Println("No definitions found for word", word)
-		return
-	}
-
-	renderDefinitionsTable(wordInfo)
 }
