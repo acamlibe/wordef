@@ -176,16 +176,6 @@ func renderDefinitionsTable(table *tablewriter.Table, wordInfo WordInfo) {
 	table.Render()
 }
 
-// func renderSynonymsAntonymsTable(table *tablewriter.Table, wordInfo WordInfo) {
-// 	table.SetHeader([]string { "Synonyms", "Antonyms" })
-
-// 	for _, v := range wordInfo. {
-// 		table.Append([]string {pos, definition})
-// 	}
-
-// 	table.Render()
-// }
-
 func renderCachedWordsTable(table *tablewriter.Table, cachedWords []string) {
 	table.SetHeader([] string { "Saved Words" })
 
@@ -221,11 +211,11 @@ func handleSearchCommand(table *tablewriter.Table, word string, cacheDir string)
 }
 
 func handleWelcomeCommand(table *tablewriter.Table, cacheDir string) error {
-	fmt.Println("wordef is used to lookup the definition of a word. The output includes the phonetic spelling, the synonyms and antonyms of the word, and the different meanings of the word given different parts-of-speech (noun, verb, adjective).")
+	fmt.Println("wordef is used to lookup the phonetic spelling and the different definitions of a word, depending on the part-of-speech (noun, verb, adjective).")
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("\twordef - shows this welcome message and shows a list of words searched and saved locally")
-	fmt.Println("\twordef {word} - displays the definitions, phonetic spellings, and synontms and antonyms of the word. Searches either through a local cache or through an API")
+	fmt.Println("\twordef {word} - displays a word's phonetic spelling and definitions. Searches either through a local cache or through an API")
 	fmt.Println()
 	fmt.Println("Cache Directory:", cacheDir)
 
