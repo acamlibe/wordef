@@ -5,11 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
+	"unicode"
 
 	"github.com/olekukonko/tablewriter"
 )
@@ -111,7 +114,7 @@ func searchWord(word, cacheDir string) (parsed []WordInfo, err error) {
 
 	rawJson, err := fetchFromCache(word, cacheDir)
 
-	if err == nil {
+	if err != nil {
 		rawJson, err = fetchFromApi(word)
 	}
 
@@ -126,6 +129,40 @@ func searchWord(word, cacheDir string) (parsed []WordInfo, err error) {
 	return parsed, nil
 }
 
+func getCachedWords(cacheDir string) (words []string, err error) {
+	err = filepath.WalkDir(cacheDir, func(s string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		filePath := d.Name()
+
+		if filepath.Ext(filePath) == ".json" {
+			fileName := filepath.Base(filePath)
+			fileNameNoExt := strings.Replace(fileName, ".json", "", 1)
+
+			words = append(words, fileNameNoExt)
+		}
+
+		return nil
+	});
+
+	if err != nil {
+		return nil, fmt.Errorf("Failed to get cached words from cache directory: %w", err)
+	}
+
+	return words, nil
+}
+
+func capitalizeString(s string) string {
+	if len(s) == 0 {
+		return ""
+	}
+	r := []rune(s)
+	r[0] = unicode.ToUpper(r[0])
+	return string(r)
+}
+
 func renderDefinitionsTable(table *tablewriter.Table, wordInfo WordInfo) {
 	table.SetHeader([]string { "POS", "Definition" })
 
@@ -134,6 +171,26 @@ func renderDefinitionsTable(table *tablewriter.Table, wordInfo WordInfo) {
 		definition := v.Definitions[0].Definition
 
 		table.Append([]string {pos, definition})
+	}
+
+	table.Render()
+}
+
+// func renderSynonymsAntonymsTable(table *tablewriter.Table, wordInfo WordInfo) {
+// 	table.SetHeader([]string { "Synonyms", "Antonyms" })
+
+// 	for _, v := range wordInfo. {
+// 		table.Append([]string {pos, definition})
+// 	}
+
+// 	table.Render()
+// }
+
+func renderCachedWordsTable(table *tablewriter.Table, cachedWords []string) {
+	table.SetHeader([] string { "Saved Words" })
+
+	for _, v := range cachedWords {
+		table.Append([]string {v})
 	}
 
 	table.Render()
@@ -154,12 +211,33 @@ func handleSearchCommand(table *tablewriter.Table, word string, cacheDir string)
 		return fmt.Errorf("Failed to search for word %s: %w", word, err)
 	}
 
+	fmt.Println("Word:", wordInfo.Word)
+	fmt.Println("Phonetic Spelling:", wordInfo.Phonetic)
+	fmt.Println()
+	
 	renderDefinitionsTable(table, wordInfo)
+
+	return nil
 }
 
-func handleWelcomeCommand() {
-	fmt.Println("wordef")
-	fmt.Println("wordef is used to lookup the definition of a word. The output includes the phonetic spelling, the different meanings of the word given different parts-of-speech (Noun, Verb, Adjective)")
+func handleWelcomeCommand(table *tablewriter.Table, cacheDir string) error {
+	fmt.Println("wordef is used to lookup the definition of a word. The output includes the phonetic spelling, the synonyms and antonyms of the word, and the different meanings of the word given different parts-of-speech (noun, verb, adjective).")
+	fmt.Println()
+	fmt.Println("Commands:")
+	fmt.Println("\twordef - shows this welcome message and shows a list of words searched and saved locally")
+	fmt.Println("\twordef {word} - displays the definitions, phonetic spellings, and synontms and antonyms of the word. Searches either through a local cache or through an API")
+	fmt.Println()
+	fmt.Println("Cache Directory:", cacheDir)
+
+	cachedWords, err := getCachedWords(cacheDir)
+
+	if err != nil {
+		return fmt.Errorf("Failed to get list of cached words")
+	}
+
+	renderCachedWordsTable(table, cachedWords)
+
+	return nil
 }
 
 func main() {
@@ -174,9 +252,9 @@ func main() {
 	table := tablewriter.NewWriter(os.Stdout)
 
 	if len(args) == 2 {
-		word := args[1]
+		word := capitalizeString(args[1])
 		handleSearchCommand(table, word, cacheDir)
 	} else {
-		handleWelcomeCommand()
+		handleWelcomeCommand(table, cacheDir)
 	}
 }
